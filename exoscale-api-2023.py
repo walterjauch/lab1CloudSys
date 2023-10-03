@@ -16,7 +16,7 @@ exo = exoscale.Exoscale()
 print("API_KEY : " + exo.api_key)
 # Create the zone object
 zone_gva2 = exo.compute.get_zone("ch-gva-2")
-
+elastic_ip = exo.compute.create_elastic_ip(zone_gva2)
 
 # If the security group hasn't yet been created uncomment the following:
 
@@ -53,29 +53,40 @@ print("Creating Instance...")
 
 # BACKEND
 back_instance = exo.compute.create_instance(
-     name="Backend",
-     zone=zone_gva2,
-     type=exo.compute.get_instance_type("small"),
-     template=list(
-         exo.compute.list_instance_templates(
-             zone_gva2,
-             "Linux Ubuntu 20.04 LTS 64-bit"))[0],
-     volume_size=50,
-     security_groups=[security_group_web],
-     user_data="""#cloud-config
-     package_upgrade: true
-     packages:
+    name="Backend",
+    zone=zone_gva2,
+    type=exo.compute.get_instance_type("small"),
+    template=list(
+        exo.compute.list_instance_templates(
+            zone_gva2,
+            "Linux Ubuntu 20.04 LTS 64-bit"))[0],
+    volume_size=50,
+    security_groups=[security_group_web],
+    user_data="""#cloud-config
+    package_upgrade: true
+    packages:
         - nginx
         - python3-pip
         - fastapi
         - uvicorn
         - git
+    write_files:
+        - path: /etc/nginx/sites_enabled/fastapi_nginx
+        content: server {
+            listen 80;
+            server_name: {eip}
+            location / {
+                proxy_pass http://127.0.0.1:8000
+            }
+        }
 
-     runcmd:
-        - git clone 
-     """.format(
-      eip=elastic_ip.address,
-      template_url=file_index.url),
+    runcmd:
+        - sudo service nginx restart
+        - git clone https://github.com/walterjauch/lab1CloudSys.git
+        - cd lab1CloudSys
+        - python3 -m uvicorn api:app
+    """.format(
+    eip=elastic_ip.address)
 )
 
 input("Backend is ready")
